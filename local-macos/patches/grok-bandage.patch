@@ -1,0 +1,181 @@
+diff --git a/headroom/providers/grok/model_metadata.py b/headroom/providers/grok/model_metadata.py
+new file mode 100644
+index 00000000..29c7bf21
+--- /dev/null
++++ b/headroom/providers/grok/model_metadata.py
+@@ -0,0 +1,55 @@
++"""xAI model metadata normalization for Grok's custom endpoint."""
++
++from __future__ import annotations
++
++from collections.abc import Mapping
++from typing import Any
++from urllib.parse import urlsplit
++
++from headroom.providers.grok.runtime import DEFAULT_API_URL
++
++_XAI_API_HOST = urlsplit(DEFAULT_API_URL).hostname
++
++
++def is_xai_model_list_target(base_url: str) -> bool:
++    """Return whether ``base_url`` is the exact xAI model-list target."""
++    parsed = urlsplit(base_url)
++    return (
++            parsed.hostname is not None
++            and _XAI_API_HOST is not None
++            and parsed.hostname.lower() == _XAI_API_HOST.lower()
++            and parsed.path.rstrip("/") in {"", "/v1"}
++    )
++
++
++def normalize_xai_model_metadata(payload: Any) -> Any:
++    """Add Grok's context alias to eligible xAI model-list entries."""
++    if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
++        return None
++
++    normalized_entries: list[Any] = []
++    changed = False
++    for entry in payload["data"]:
++        if not isinstance(entry, Mapping):
++            normalized_entries.append(entry)
++            continue
++        context_length = entry.get("context_length")
++        if (
++                isinstance(context_length, int)
++                and not isinstance(context_length, bool)
++                and context_length > 0
++                and "context_window" not in entry
++                and "contextWindow" not in entry
++        ):
++            normalized_entry = dict(entry)
++            normalized_entry["context_window"] = context_length
++            normalized_entries.append(normalized_entry)
++            changed = True
++        else:
++            normalized_entries.append(entry)
++
++    if not changed:
++        return None
++    normalized_payload = dict(payload)
++    normalized_payload["data"] = normalized_entries
++    return normalized_payload
+diff --git a/headroom/providers/model_metadata.py b/headroom/providers/model_metadata.py
+index f80ab0e7..aafdb1ad 100644
+--- a/headroom/providers/model_metadata.py
++++ b/headroom/providers/model_metadata.py
+@@ -1,14 +1,19 @@
+ """Provider model metadata route helpers."""
+ 
+ from __future__ import annotations
+-
++import json
+ from dataclasses import dataclass
+-from typing import Any, cast
++from typing import Any, NoReturn, cast
+ 
+ from fastapi import Request
+ from fastapi.responses import Response
+ 
+ from headroom.providers.codex.model_metadata import handle_chatgpt_model_metadata
++from headroom.providers.grok.model_metadata import (
++    is_xai_model_list_target,
++    normalize_xai_model_metadata,
++)
++from headroom.proxy.helpers import sanitize_forwarded_response_headers
+ 
+ 
+ @dataclass(frozen=True, slots=True)
+@@ -23,6 +28,10 @@ class ModelMetadataEndpoint:
+ MODEL_METADATA_LIST_ENDPOINT = ModelMetadataEndpoint("/v1/models", "/backend-api/models")
+ 
+ 
++def _reject_non_standard_json_constant(value: str) -> NoReturn:
++    raise ValueError(f"non-standard JSON constant: {value}")
++
++
+ def model_metadata_get_endpoint(model_id: str) -> ModelMetadataEndpoint:
+     """Return the single-model metadata endpoint for ``model_id``."""
+     return ModelMetadataEndpoint(
+@@ -32,12 +41,12 @@ def model_metadata_get_endpoint(model_id: str) -> ModelMetadataEndpoint:
+ 
+ 
+ async def handle_model_metadata_endpoint(
+-    proxy: Any,
+-    request: Request,
+-    *,
+-    endpoint: ModelMetadataEndpoint,
+-    provider_api_base_url: str,
+-    provider_name: str,
++        proxy: Any,
++        request: Request,
++        *,
++        endpoint: ModelMetadataEndpoint,
++        provider_api_base_url: str,
++        provider_name: str,
+ ) -> Response:
+     """Handle OpenAI-compatible model metadata with Codex ChatGPT-auth support."""
+     assert proxy.http_client is not None
+@@ -49,7 +58,7 @@ async def handle_model_metadata_endpoint(
+     if chatgpt_response is not None:
+         return chatgpt_response
+ 
+-    return cast(
++    response = cast(
+         Response,
+         await proxy.handle_passthrough(
+             request,
+@@ -58,3 +67,37 @@ async def handle_model_metadata_endpoint(
+             provider_name,
+         ),
+     )
++    if (
++            endpoint == MODEL_METADATA_LIST_ENDPOINT
++            and 200 <= response.status_code < 300
++            and is_xai_model_list_target(provider_api_base_url)
++    ):
++        normalized_content: bytes | None = None
++        try:
++            payload = json.loads(
++                response.body,
++                parse_constant=_reject_non_standard_json_constant,
++            )
++            normalized_payload = normalize_xai_model_metadata(payload)
++            if normalized_payload is not None:
++                normalized_content = json.dumps(
++                    normalized_payload,
++                    separators=(",", ":"),
++                    ensure_ascii=False,
++                ).encode("utf-8")
++        except (TypeError, UnicodeError, ValueError):
++            normalized_payload = None
++        if normalized_payload is not None and normalized_content is not None:
++            headers = sanitize_forwarded_response_headers(
++                response.headers,
++                "etag",
++                "last-modified",
++                "cache-control",
++            )
++            headers["content-type"] = "application/json"
++            return Response(
++                content=normalized_content,
++                status_code=response.status_code,
++                headers=headers,
++            )
++        return response
+diff --git a/headroom/proxy/handlers/openai.py b/headroom/proxy/handlers/openai.py
+index e7eeba01..ba6eef93 100644
+--- a/headroom/proxy/handlers/openai.py
++++ b/headroom/proxy/handlers/openai.py
+@@ -10609,6 +10609,12 @@ class OpenAIHandlerMixin:
+                     separators=(",", ":"),
+                     ensure_ascii=False,
+                 ).encode("utf-8")
++                response_headers = _sanitize_forwarded_response_headers(
++                    response.headers,
++                    "etag",
++                    "last-modified",
++                    "cache-control",
++                )
+                 response_headers["content-type"] = "application/json"
+ 
+         # Passthrough request: forwarded upstream with no transforms.

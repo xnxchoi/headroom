@@ -1,0 +1,28 @@
+{
+  "comment": "Pinned vendor identities for overlay lifecycle. Team IDs come from codesign; they do not change when a CLI is renamed grok-2.1.1.",
+  "providers": [
+    {
+      "id": "xai",
+      "team_id": "5Y6N3AJ54S",
+      "identifiers": ["xai-grok-pager"],
+      "apps": ["/Applications/Grok.app"],
+      "which": ["grok"],
+      "scan_dirs": ["~/.grok/bin", "~/.grok/downloads"]
+    },
+    {
+      "id": "openai",
+      "team_id": "2DC432GLL2",
+      "identifiers": ["com.openai.codex", "codex"],
+      "apps": ["/Applications/ChatGPT.app", "/Applications/Codex.app"],
+      "which": ["codex"]
+    },
+    {
+      "id": "anthropic",
+      "team_id": "Q6L2SF6YDW",
+      "identifiers": ["com.anthropic.claudefordesktop", "com.anthropic.claude-code"],
+      "apps": ["/Applications/Claude.app"],
+      "which": ["claude"],
+      "scan_dirs": ["~/.local/share/claude/versions"]
+    }
+  ]
+}
