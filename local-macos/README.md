@@ -22,9 +22,9 @@ Inventory refresh (`refresh-clients.py`):
 
 Result: `~/.headroom/overlay/clients.json`. `apgujeongrok` / `not-grok-nor-gpt` never match unless they are signed by those vendor Team IDs (they are not).
 
-Binary: `~/.headroom/venv/bin/headroom` (editable install of this git checkout).
+Binary: `~/.headroom/venv/bin/headroom` (editable install of this git checkout), also linked as `~/.local/bin/headroom`. The venv is **Python 3.13**. Do not point LaunchAgents at `~/.pythogoras` or Homebrew/python.org 3.14 (`python3` on PATH may be 3.14; LiteLLM does not install there).
 
-Not used: Serena, torch extras, `headroom wrap grok-build`, `GROK_MODELS_BASE_URL`.
+Not used: Serena, torch extras, `headroom wrap grok-build`, `GROK_MODELS_BASE_URL`. The leftover stock job `com.headroom.proxy` (old `~/.pythogoras` 8787) is disabled and the plist is moved aside so it cannot steal the port.
 
 ## Commands
 

@@ -27,7 +27,7 @@ Usage: update.sh [--drop-bandage]
 Runs the official Headroom checkout upgrade, then refreshes this overlay.
 
   1. headroom update --check
-  2. git pull --ff-only origin main
+  2. git pull --ff-only origin main  (macos-overlay: merge origin/main)
   3. re-apply patches/grok-bandage.patch (unless --drop-bandage)
   4. uv pip install -e ".[proxy,code,relevance,mcp,reports]"
   5. rewrite LaunchAgents + Grok/Codex/Claude routing
@@ -46,10 +46,14 @@ done
 
 cd "$REPO"
 
-if [[ "$(git rev-parse --abbrev-ref HEAD)" != "main" ]]; then
-    echo "error: expected branch main" >&2
-    exit 1
-fi
+BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+case "$BRANCH" in
+    main|macos-overlay) ;;
+    *)
+        echo "error: expected branch main or macos-overlay (got $BRANCH)" >&2
+        exit 1
+        ;;
+esac
 if [[ ! -x "$HEADROOM" ]]; then
     echo "error: overlay venv missing ($HEADROOM). Run install.sh first." >&2
     exit 1
@@ -63,13 +67,18 @@ bandage_on() {
     [[ -f "$PATCH" ]] && git apply --reverse --check "$PATCH" >/dev/null 2>&1
 }
 
-echo "==> 2/6  official: git pull --ff-only origin main"
+echo "==> 2/6  official: fetch origin/main"
 if bandage_on; then
-    echo "    reversing grok bandage so pull is clean"
+    echo "    reversing grok bandage so the update is clean"
     git apply --reverse "$PATCH"
 fi
 git fetch origin
-git pull --ff-only origin main
+if [[ "$BRANCH" == "main" ]]; then
+    git pull --ff-only origin main
+else
+    echo "    merging origin/main into $BRANCH"
+    git merge --no-edit origin/main
+fi
 
 echo "==> 3/6  grok bandage"
 if (( DROP_BANDAGE )); then
@@ -94,7 +103,8 @@ uv pip install --python "$PYTHON" -e "${REPO}/local-macos/overlay_pkg"
 echo "==> 5/6  overlay: LaunchAgents + client routing"
 "$PYTHON" "$REPO/local-macos/scripts/render-plists.py"
 "$PYTHON" "$REPO/local-macos/scripts/apply-client-config.py"
-/usr/bin/python3 "$REPO/local-macos/scripts/refresh-clients.py"
+"$PYTHON" "$REPO/local-macos/scripts/refresh-clients.py"
+/bin/launchctl disable "${DOMAIN}/com.headroom.proxy" >/dev/null 2>&1 || true
 for label in com.headroom.proxy.openai com.headroom.proxy.grok com.headroom.mcp.http; do
     /bin/launchctl kickstart -k "${DOMAIN}/${label}" >/dev/null 2>&1 || true
 done

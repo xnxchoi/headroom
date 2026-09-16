@@ -14,6 +14,7 @@ readonly START_RETRY_SECONDS=15
 readonly STATE_DIR="$HOME/.headroom/lifecycle"
 readonly PAUSE_FILE="${STATE_DIR}/paused"
 readonly PLIST_DIR="$HOME/Library/LaunchAgents"
+readonly OVERLAY_PYTHON="$HOME/.headroom/venv/bin/python"
 
 typeset -a JOBS
 JOBS=(
@@ -37,8 +38,16 @@ stop_grace_seconds() {
     print -r -- "$g"
 }
 
+overlay_python() {
+    if [[ -x "$OVERLAY_PYTHON" ]]; then
+        print -r -- "$OVERLAY_PYTHON"
+    else
+        print -r -- /usr/bin/python3
+    fi
+}
+
 clients_present() {
-    /usr/bin/python3 "$HOME/.headroom/overlay/match-clients.py" >/dev/null 2>&1
+    "$(overlay_python)" "$HOME/.headroom/overlay/match-clients.py" >/dev/null 2>&1
 }
 
 port_listening() {

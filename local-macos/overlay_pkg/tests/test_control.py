@@ -20,6 +20,37 @@ def overlay_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return overlay
 
 
+def test_overlay_python_prefers_venv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    venv_py = tmp_path / "python"
+    venv_py.write_text("", encoding="utf-8")
+    monkeypatch.setattr(control, "VENV_PYTHON", venv_py)
+    assert control.overlay_python() == str(venv_py)
+
+
+def test_overlay_python_falls_back_without_venv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(control, "VENV_PYTHON", tmp_path / "missing")
+    assert control.overlay_python() == "/usr/bin/python3"
+
+
+def test_list_clients_invokes_overlay_python(
+    overlay_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (overlay_home / "match-clients.py").write_text("#", encoding="utf-8")
+    monkeypatch.setattr(control, "overlay_python", lambda: "/opt/headroom-venv/bin/python")
+    seen: list[list[str]] = []
+
+    def fake_run(argv, **kwargs):  # type: ignore[no-untyped-def]
+        seen.append(list(argv))
+        return type("R", (), {"stdout": "53816  grok\n", "returncode": 0})()
+
+    monkeypatch.setattr(control.subprocess, "run", fake_run)
+    assert control.list_clients() == ["53816  grok"]
+    assert seen[0][0] == "/opt/headroom-venv/bin/python"
+    assert seen[0][1] == str(control.MATCH)
+
+
 def test_default_grace_is_90_seconds(overlay_home: Path) -> None:
     assert control.DEFAULT_GRACE == 90
     assert control.grace_seconds() == 90

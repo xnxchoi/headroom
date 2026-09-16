@@ -20,7 +20,9 @@ notify() {
 }
 
 if [[ -f "$MATCH" ]]; then
-    clients="$(/usr/bin/python3 "$MATCH" --list || true)"
+    matcher_py="$PYTHON"
+    [[ -x "$matcher_py" ]] || matcher_py=/usr/bin/python3
+    clients="$("$matcher_py" "$MATCH" --list || true)"
     if [[ -n "${clients}" ]]; then
         print -u2 "Quit these client processes first, then retry:"
         print -u2 -- "$clients"

@@ -12,6 +12,7 @@ OVERLAY = Path.home() / ".headroom" / "overlay"
 GRACE_FILE = OVERLAY / "stop_grace_seconds"
 LIFECYCLE_JSON = OVERLAY / "lifecycle.json"
 MATCH = OVERLAY / "match-clients.py"
+VENV_PYTHON = Path.home() / ".headroom" / "venv" / "bin" / "python"
 PLIST_DIR = Path.home() / "Library" / "LaunchAgents"
 LABELS = (
     "com.headroom.proxy.openai",
@@ -33,11 +34,22 @@ def _domain() -> str:
     return f"gui/{_uid()}"
 
 
+def overlay_python() -> str:
+    """Interpreter for overlay helpers. Prefer the Headroom 3.13 venv.
+
+    Login PATH may be python.org / Homebrew 3.14, and /usr/bin/python3 is
+    still 3.9 on macOS. Matching and refresh must not follow that PATH.
+    """
+    if VENV_PYTHON.is_file():
+        return str(VENV_PYTHON)
+    return "/usr/bin/python3"
+
+
 def list_clients() -> list[str]:
     if not MATCH.is_file():
         return []
     result = subprocess.run(
-        ["/usr/bin/python3", str(MATCH), "--list"],
+        [overlay_python(), str(MATCH), "--list"],
         capture_output=True,
         text=True,
         check=False,

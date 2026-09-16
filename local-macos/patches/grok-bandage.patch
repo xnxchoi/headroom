@@ -163,10 +163,10 @@ index f80ab0e7..aafdb1ad 100644
 +            )
 +        return response
 diff --git a/headroom/proxy/handlers/openai.py b/headroom/proxy/handlers/openai.py
-index e7eeba01..ba6eef93 100644
+index 42edd702..50a5be4f 100644
 --- a/headroom/proxy/handlers/openai.py
 +++ b/headroom/proxy/handlers/openai.py
-@@ -10609,6 +10609,12 @@ class OpenAIHandlerMixin:
+@@ -10792,6 +10792,12 @@ class OpenAIHandlerMixin:
                      separators=(",", ":"),
                      ensure_ascii=False,
                  ).encode("utf-8")

@@ -31,6 +31,7 @@ echo "==> bootout old LaunchAgents (lifecycle first)"
 for label in com.headroom.lifecycle com.headroom.proxy com.headroom.proxy.openai com.headroom.proxy.grok com.headroom.mcp.http; do
     /bin/launchctl bootout "${DOMAIN}/${label}" >/dev/null 2>&1 || true
 done
+/bin/launchctl disable "${DOMAIN}/com.headroom.proxy" >/dev/null 2>&1 || true
 
 echo "==> stopping leftover headroom mcp stdio"
 /usr/bin/pkill -f "headroom mcp serve" >/dev/null 2>&1 || true
@@ -43,7 +44,7 @@ echo "==> rendering plists"
 echo "==> applying client config"
 "$PYTHON" "$REPO/local-macos/scripts/apply-client-config.py"
 echo "==> discovering signed Grok/ChatGPT/Claude/Codex clients"
-/usr/bin/python3 "$REPO/local-macos/scripts/refresh-clients.py"
+"$PYTHON" "$REPO/local-macos/scripts/refresh-clients.py"
 
 echo "==> bootstrap lifecycle (starts proxies when clients are present)"
 /bin/launchctl bootstrap "$DOMAIN" "$HOME/Library/LaunchAgents/com.headroom.lifecycle.plist"

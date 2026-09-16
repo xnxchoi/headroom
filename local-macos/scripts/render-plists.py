@@ -4,13 +4,35 @@
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
 from xml.sax.saxutils import escape
 
 HOME = Path.home()
 HEADROOM = HOME / ".headroom" / "venv" / "bin" / "headroom"
+VENV_PYTHON = HOME / ".headroom" / "venv" / "bin" / "python"
 LOG_DIR = HOME / "Library" / "Logs" / "headroom"
 AGENT_DIR = HOME / "Library" / "LaunchAgents"
+STOCK_PROXY_PLIST = AGENT_DIR / "com.headroom.proxy.plist"
+
+
+def overlay_python() -> str:
+    if VENV_PYTHON.is_file():
+        return str(VENV_PYTHON)
+    return "/usr/bin/python3"
+
+
+def retire_stock_proxy_plist() -> None:
+    """Keep the pre-overlay pythogoras LaunchAgent from grabbing port 8787."""
+    if not STOCK_PROXY_PLIST.is_file():
+        return
+    backup_dir = HOME / ".headroom" / "overlay-backup" / "disabled-stock-proxy"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    dest = backup_dir / "com.headroom.proxy.plist"
+    if not dest.exists():
+        shutil.copy2(STOCK_PROXY_PLIST, dest)
+    STOCK_PROXY_PLIST.unlink()
+    print(f"retired leftover {STOCK_PROXY_PLIST} -> {dest}")
 
 
 def plist(label: str, args: list[str], env: dict[str, str], stdout: str, stderr: str) -> str:
@@ -59,7 +81,7 @@ def refresh_agent_plist(script: Path) -> str:
         "/opt/homebrew/Caskroom",
     ]
     watch_xml = "\n".join(f"        <string>{escape(p)}</string>" for p in watches)
-    python = "/usr/bin/python3"
+    python = overlay_python()
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -140,15 +162,35 @@ def lifecycle_plist(script: Path) -> str:
 """
 
 
+def _link_headroom_cli() -> None:
+    if not HEADROOM.is_file():
+        return
+    dest = HOME / ".local" / "bin" / "headroom"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.is_symlink():
+        if dest.resolve() == HEADROOM.resolve():
+            return
+        dest.unlink()
+    elif dest.exists():
+        print(f"skip {dest}: exists and is not a symlink")
+        return
+    dest.symlink_to(HEADROOM)
+    print(f"wrote {dest} -> {HEADROOM}")
+
+
 def main() -> None:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     AGENT_DIR.mkdir(parents=True, exist_ok=True)
+    retire_stock_proxy_plist()
+    _link_headroom_cli()
     headroom = str(HEADROOM)
     common_env = {
         "HOME": str(HOME),
         "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:" + str(HOME / ".headroom/venv/bin"),
         "HEADROOM_OUTPUT_SHAPER": "1",
         "HEADROOM_KOMPRESS_BACKEND": "onnx_coreml",
+        "HEADROOM_KOMPRESS_TIME_BUDGET_SECONDS": "5",
+        "HEADROOM_KOMPRESS_ACQUIRE_TIMEOUT_SECONDS": "2",
         "HEADROOM_SAVINGS_PROFILE": "coding",
         "HEADROOM_HOST": "127.0.0.1",
         "HEADROOM_PROXY_EXTENSIONS": "macos-overlay",
